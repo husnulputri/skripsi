@@ -59,6 +59,7 @@ If you discover any security related issues, please email support@nylo.dev inste
 * [stensonb](https://github.com/stensonb)
 * [ruwiss](https://github.com/ruwiss)
 * [rytisder](https://github.com/rytisder)
+* [necro304](https://github.com/necro304)
 
 ## Contributing
 
