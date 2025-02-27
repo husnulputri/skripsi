@@ -60,6 +60,7 @@ If you discover any security related issues, please email support@nylo.dev inste
 * [ruwiss](https://github.com/ruwiss)
 * [rytisder](https://github.com/rytisder)
 * [necro304](https://github.com/necro304)
+* [israelins85](https://github.com/israelins85)
 
 ## Contributing
 
