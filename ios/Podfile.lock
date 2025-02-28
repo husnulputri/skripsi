@@ -1,5 +1,5 @@
 PODS:
-  - app_badge_plus (1.1.6):
+  - app_badge_plus (1.2.0):
     - Flutter
   - Flutter (1.0.0)
   - flutter_local_notifications (0.0.1):
@@ -46,7 +46,7 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/url_launcher_ios/ios"
 
 SPEC CHECKSUMS:
-  app_badge_plus: 060babf17a97011f0093739f0aa8bc65b2479233
+  app_badge_plus: 3227d759d2a54e4fc28ec806596ec3b740c3c17a
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
   flutter_local_notifications: df98d66e515e1ca797af436137b4459b160ad8c9
   flutter_secure_storage: d33dac7ae2ea08509be337e775f6b59f1ff45f12
