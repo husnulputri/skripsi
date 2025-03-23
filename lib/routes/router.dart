@@ -21,9 +21,9 @@ import 'package:nylo_framework/nylo_framework.dart';
 
 appRouter() => nyRoutes((router) {
       router.add(HomePage.path).initialRoute();
-      // Add your routes here ...
 
-      // router.add(NewPage.path, transition: PageTransitionType.fade);
+      // Add your routes here ...
+      // router.add(NewPage.path, transitionType: TransitionType.fade());
 
       // Example using grouped routes
       // router.group(() => {
@@ -33,4 +33,4 @@ appRouter() => nyRoutes((router) {
       //
       // });
       router.add(NotFoundPage.path).unknownRoute();
-    });
+});
