@@ -34,10 +34,10 @@ packages:
     dependency: transitive
     description:
       name: app_badge_plus
-      sha256: a254b58e8b0f47ab6b4a3d596b839b8a8bdc187da7dc69a6b02fa09fab5fd7c8
+      sha256: "3b319d12719ecd4fd2c44099f1ce1df622eff7d958f3c99776b17313bfcf25e3"
       url: "https://pub.dev"
     source: hosted
-    version: "1.2.0"
+    version: "1.2.1"
   archive:
     dependency: transitive
     description:
@@ -300,10 +300,10 @@ packages:
     dependency: transitive
     description:
       name: flutter_multi_formatter
-      sha256: "68274ade17e836e7de9080ad354aa4322906baee2abf49afb1f6fec99ff17aea"
+      sha256: "01e8ba4cfae4b52377d1c83e57293da24eb64696d7c2df064acc4ae97bb4a157"
       url: "https://pub.dev"
     source: hosted
-    version: "2.13.0"
+    version: "2.13.7"
   flutter_secure_storage:
     dependency: transitive
     description:
@@ -542,18 +542,18 @@ packages:
     dependency: "direct main"
     description:
       name: nylo_framework
-      sha256: "0d3ea199c2eec757cfaae6872d72686a74c5b2c92b9f54a3e5b258df2a7ff8c4"
+      sha256: "365d07d1268802f4123b517ee449566e9c90fd81cd91b796047eed9557c16d9d"
       url: "https://pub.dev"
     source: hosted
-    version: "6.6.2"
+    version: "6.6.3"
   nylo_support:
     dependency: transitive
     description:
       name: nylo_support
-      sha256: c095ee4a01860163a603079fc560e9a2d0bb9ca57342867676bcccb30a9318a0
+      sha256: "129db2690adf8b17fb602ed7478eeab0651a97eba1ecd5b0f7ddc503d7d871be"
       url: "https://pub.dev"
     source: hosted
-    version: "6.21.0"
+    version: "6.22.0"
   package_config:
     dependency: transitive
     description:
@@ -702,10 +702,10 @@ packages:
     dependency: "direct main"
     description:
       name: scaffold_ui
-      sha256: "72e3a0866bae864d914b65f3960147ff88c114e06ee582b83620cce0421f7d06"
+      sha256: "6d3392e4af15bddf871c2f18eb4d8635756da1fff68131685e88e7f162a4f02a"
       url: "https://pub.dev"
     source: hosted
-    version: "1.2.5"
+    version: "1.2.6"
   shared_preferences:
     dependency: transitive
     description:
