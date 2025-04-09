@@ -542,10 +542,10 @@ packages:
     dependency: "direct main"
     description:
       name: nylo_framework
-      sha256: "2340360b2e7a56c39ec6fda6fce5ede4cf1c72135824cf7775e0852d3f72240f"
+      sha256: "634248f7c7644a205718f602bddb5f4e374c4b4d947ad02874ad4322be685c06"
       url: "https://pub.dev"
     source: hosted
-    version: "6.7.1"
+    version: "6.7.2"
   nylo_support:
     dependency: transitive
     description:
