@@ -61,6 +61,7 @@ If you discover any security related issues, please email support@nylo.dev inste
 * [rytisder](https://github.com/rytisder)
 * [necro304](https://github.com/necro304)
 * [israelins85](https://github.com/israelins85)
+* [voytech-net](https://github.com/voytech-net)
 
 ## Contributing
 
