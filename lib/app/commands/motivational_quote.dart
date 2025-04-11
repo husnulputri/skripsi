@@ -5,8 +5,8 @@ void main(arguments) => _MotivationalQuoteCommand(arguments).run();
 /// Motivational Quote Command
 ///
 /// Usage:
-///   [From Terminal] dart run nylo_framework:main motivation:quote
-///   [With Metro]    metro motivation:quote
+///   [From Terminal] dart run nylo_framework:main motivational:quote
+///   [With Metro]    metro motivational:quote
 class _MotivationalQuoteCommand extends NyCustomCommand {
   _MotivationalQuoteCommand(super.arguments);
 

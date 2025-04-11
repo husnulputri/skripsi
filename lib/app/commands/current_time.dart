@@ -19,7 +19,7 @@ class _CurrentTimeCommand extends NyCustomCommand {
 
   @override
   Future<void> handle(CommandResult result) async {
-    final format = result.getString("format", defaultValue: "HH:mm");
+    final format = result.getString("format");
 
     // Get the current time
     final now = DateTime.now();
