@@ -1,8 +1,8 @@
 [
   {
     "name": "quote",
-    "category": "motivation",
-    "script": "motivation_quote.dart"
+    "category": "motivational",
+    "script": "motivational_quote.dart"
   },
   {
     "name": "current_time",

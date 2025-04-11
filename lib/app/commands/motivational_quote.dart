@@ -1,14 +1,14 @@
 import 'package:nylo_framework/metro/ny_cli.dart';
 
-void main(arguments) => _MotivationQuoteCommand(arguments).run();
+void main(arguments) => _MotivationalQuoteCommand(arguments).run();
 
-/// Motivation Quote Command
+/// Motivational Quote Command
 ///
 /// Usage:
 ///   [From Terminal] dart run nylo_framework:main motivation:quote
 ///   [With Metro]    metro motivation:quote
-class _MotivationQuoteCommand extends NyCustomCommand {
-  _MotivationQuoteCommand(super.arguments);
+class _MotivationalQuoteCommand extends NyCustomCommand {
+  _MotivationalQuoteCommand(super.arguments);
 
   @override
   CommandBuilder builder(CommandBuilder command) => command;
