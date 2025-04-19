@@ -542,18 +542,18 @@ packages:
     dependency: "direct main"
     description:
       name: nylo_framework
-      sha256: "0d9f70d0ee8a6ad8cb7948d83eb00b0df7aeddbf9f9b76361dd40b45cb02dcbb"
+      sha256: "4083db3367a0257703a46d5ef5803cbbccc3399538b7f7b26d3fd2e9cef1bf09"
       url: "https://pub.dev"
     source: hosted
-    version: "6.8.1"
+    version: "6.8.2"
   nylo_support:
     dependency: transitive
     description:
       name: nylo_support
-      sha256: "1c77a427ff4872d9882646a0b83b4a63ce1c864673ea18bd17958aeb37ab0532"
+      sha256: "46dea59eb36c218df58acd229fb91b7dbeff9e0f3d4dd6dc421bd43f4e0073d3"
       url: "https://pub.dev"
     source: hosted
-    version: "6.26.0"
+    version: "6.27.0"
   package_config:
     dependency: transitive
     description:
