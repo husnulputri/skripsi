@@ -36,6 +36,7 @@ class AppProvider implements NyProvider {
     // Optional
     // nylo.showDateTimeInLogs(); // Show date time in logs
     // nylo.monitorAppUsage(); // Monitor the app usage
+    // nylo.broadcastEvents(); // Broadcast events in the app
 
     return nylo;
   }
