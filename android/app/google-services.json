@@ -1,0 +1,30 @@
+{
+ "project_info": {
+  "project_number": "656760254080",
+  "firebase_url": "https://project-penyiraman-pencahayaan-default-rtdb.asia-southeast1.firebasedatabase.app",
+  "project_id": "project-penyiraman-pencahayaan",
+  "storage_bucket": "project-penyiraman-pencahayaan.firebasestorage.app"
+},
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:656760254080:android:2af63561257dfe566fc065",
+        "android_client_info": {
+          "package_name": "com.nylo.android"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDhFmfB9JHDZTIKQa7GCSpdgoDaxYS0cFk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

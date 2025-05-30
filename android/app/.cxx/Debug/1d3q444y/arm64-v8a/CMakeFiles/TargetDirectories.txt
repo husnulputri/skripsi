@@ -1,0 +1,2 @@
+E:/D/SKRIPSIAN/nylo/skripsi/android/app/.cxx/Debug/1d3q444y/arm64-v8a/CMakeFiles/edit_cache.dir
+E:/D/SKRIPSIAN/nylo/skripsi/android/app/.cxx/Debug/1d3q444y/arm64-v8a/CMakeFiles/rebuild_cache.dir

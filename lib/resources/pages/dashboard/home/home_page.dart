@@ -1,0 +1,1868 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter_app/config/assets_image.dart';
+import 'package:flutter_app/config/colors_config.dart';
+import 'package:nylo_framework/nylo_framework.dart';
+import 'package:syncfusion_flutter_gauges/gauges.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
+
+class HomePage extends NyStatefulWidget {
+  static RouteView path = ("/home", (_) => HomePage());
+
+  HomePage({super.key}) : super(child: () => _HomePageState());
+}
+
+class _HomePageState extends NyPage<HomePage> with WidgetsBindingObserver {
+  bool isManual = false;
+  bool isAutomatic = false;
+  bool isLightManualMode = false;
+  bool isLightOn = false;
+  TimeOfDay? startTime;
+  TimeOfDay? endTime;
+  bool isAutoMode = false;
+  double suhuUdara = 0;
+  double lightIntensity = 0;
+  double kelembapan = 0;
+  double kelembapanUdara = 0;
+  int selectedDuration = 10; // Default duration in minutes
+  bool isIrrigationOn = false; // Default value is off
+  List<Map<String, dynamic>> schedules = [
+    {'startTime': TimeOfDay.now(), 'duration': 1},
+  ];
+
+  String pumpCategory = '';
+  int pumpDuration = 0;
+  bool pumpShouldRun = false;
+
+  // User info variables
+  String userName = 'User';
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Profile image variables
+  String? _localImagePath;
+  XFile? _webImageFile;
+
+  // Timer for periodic image check
+  Timer? _imageUpdateTimer;
+
+  // Firebase Realtime Database reference
+  final DatabaseReference _databaseReference = FirebaseDatabase.instance.ref();
+
+  // Stream subscriptions for real-time data
+  late StreamSubscription<DatabaseEvent> suhuUdaraSubscription;
+  late StreamSubscription<DatabaseEvent> lightIntensitySubscription;
+  late StreamSubscription<DatabaseEvent> kelembapanSubscription;
+  late StreamSubscription<DatabaseEvent> kelembapanUdaraSubscription;
+  late StreamSubscription<DatabaseEvent> manualControlSubscription;
+  late StreamSubscription<DatabaseEvent> pumpControlSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Start periodic image checking
+    _startImageUpdateTimer();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // App came back to foreground, check for image updates
+      _loadLocalImage();
+    }
+  }
+
+  // Start timer to periodically check for image updates
+  void _startImageUpdateTimer() {
+    _imageUpdateTimer = Timer.periodic(Duration(seconds: 2), (timer) {
+      _loadLocalImage();
+    });
+  }
+
+  // Load profile image from local storage
+  Future<void> _loadLocalImage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = _auth.currentUser?.uid ?? 'default_user';
+      final imagePath = prefs.getString('user_profile_image_$userId');
+
+      // Only update if the path has changed
+      if (imagePath != _localImagePath) {
+        if (imagePath != null) {
+          if (kIsWeb) {
+            setState(() {
+              _localImagePath = imagePath;
+            });
+          } else {
+            final file = File(imagePath);
+            if (await file.exists()) {
+              setState(() {
+                _localImagePath = imagePath;
+              });
+            } else {
+              // File doesn't exist, remove reference
+              prefs.remove('user_profile_image_$userId');
+              setState(() {
+                _localImagePath = null;
+              });
+            }
+          }
+        } else {
+          setState(() {
+            _localImagePath = null;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading local image: $e');
+    }
+  }
+
+  // Build profile avatar widget with fallback logic
+  Widget _buildProfileAvatar() {
+    if (kIsWeb) {
+      // Web platform handling
+      if (_localImagePath != null) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Image.network(
+            _localImagePath!,
+            width: 40,
+            height: 40,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return const Icon(Icons.person, color: Colors.white);
+            },
+          ),
+        );
+      }
+    } else {
+      // Mobile platform handling
+      if (_localImagePath != null) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Image.file(
+            File(_localImagePath!),
+            width: 40,
+            height: 40,
+            fit: BoxFit.cover,
+            // Add key to force rebuild when path changes
+            key: ValueKey(_localImagePath),
+            errorBuilder: (context, error, stackTrace) {
+              return const Icon(Icons.person, color: Colors.white);
+            },
+          ),
+        );
+      }
+    }
+
+    // Fallback: Try Firebase Auth photo URL if no local image
+    if (_auth.currentUser?.photoURL != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Image.network(
+          _auth.currentUser!.photoURL!,
+          width: 40,
+          height: 40,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return const Icon(Icons.person, color: Colors.white);
+          },
+        ),
+      );
+    }
+
+    // Default icon
+    return const Icon(Icons.person, color: Colors.white);
+  }
+
+  // Update irrigation status in Firebase RTDB
+  void _updateIrrigationStatus(bool pumpOn) {
+    _databaseReference.child("manual_control/pump_on").set(pumpOn);
+    setState(() {
+      isIrrigationOn = pumpOn;
+    });
+  }
+
+  // Update irrigation mode (manual or automatic)
+  void _updateIrrigationMode(bool isManualMode) {
+    _databaseReference.child("manual_control/active").set(isManualMode);
+    setState(() {
+      isManual = isManualMode;
+      isAutomatic = !isManualMode;
+    });
+  }
+
+  // Update irrigation duration
+  void _updateIrrigationDuration(int durationMinutes) {
+    _databaseReference.child("manual_control/duration").set(durationMinutes);
+    setState(() {
+      selectedDuration = durationMinutes;
+    });
+  }
+
+  // Get current user name
+  void _getCurrentUser() {
+    final User? user = _auth.currentUser;
+    if (user != null) {
+      // Check if display name exists
+      if (user.displayName != null && user.displayName!.isNotEmpty) {
+        setState(() {
+          userName = user.displayName!;
+        });
+      } else if (user.email != null) {
+        // Use email as fallback but remove domain part
+        final emailName = user.email!.split('@')[0];
+        setState(() {
+          userName = emailName;
+        });
+      }
+    }
+  }
+
+  // Set up Firebase Realtime Database listeners
+  void _setupDatabaseListeners() {
+    // Listen to Suhu Udara changes
+    suhuUdaraSubscription = _databaseReference
+        .child('MonitoringData/Suhu_Terkalibrasi')
+        .onValue
+        .listen((event) {
+      if (event.snapshot.value != null) {
+        setState(() {
+          // Parse the value to double
+          suhuUdara = double.parse(event.snapshot.value.toString());
+        });
+      }
+    });
+
+    // Listen to Light Intensity changes
+    lightIntensitySubscription = _databaseReference
+        .child('MonitoringData/Intensitas_Cahaya_Terkalibrasi')
+        .onValue
+        .listen((event) {
+      if (event.snapshot.value != null) {
+        setState(() {
+          // Parse the value to double
+          lightIntensity = double.parse(event.snapshot.value.toString());
+        });
+      }
+    });
+
+    // Listen to Kelembapan changes
+    kelembapanUdaraSubscription = _databaseReference
+        .child('MonitoringData/Kelembaban_Udara_Terkalibrasi')
+        .onValue
+        .listen((event) {
+      if (event.snapshot.value != null) {
+        setState(() {
+          // Parse the value to double and assign to kelembapanUdara
+          kelembapanUdara = double.parse(event.snapshot.value.toString());
+        });
+      }
+    });
+
+    kelembapanUdaraSubscription = _databaseReference
+        .child('/MonitoringData/Kelembaban_Tanah_Terkalibrasi')
+        .onValue
+        .listen((event) {
+      if (event.snapshot.value != null) {
+        setState(() {
+          // Parse the value to double
+          kelembapan = double.parse(event.snapshot.value.toString());
+        });
+      }
+    });
+
+    _databaseReference
+        .child('manual_control/light_mode')
+        .onValue
+        .listen((event) {
+      if (event.snapshot.value != null) {
+        setState(() {
+          isLightManualMode = event.snapshot.value as bool;
+        });
+      }
+    });
+
+    // Listen to light status changes
+    _databaseReference
+        .child('light_status/kondisi_lampu')
+        .onValue
+        .listen((event) {
+      if (event.snapshot.value != null) {
+        setState(() {
+          isLightOn = event.snapshot.value as bool;
+        });
+      }
+    });
+
+    _databaseReference.child('controls/isAutoMode').onValue.listen((event) {
+      if (event.snapshot.value != null) {
+        setState(() {
+          isAutoMode = event.snapshot.value as bool;
+        });
+      }
+    });
+
+    // Listen to manual control changes (new code)
+    manualControlSubscription =
+        _databaseReference.child('manual_control').onValue.listen((event) {
+      if (event.snapshot.value != null) {
+        final data = event.snapshot.value as Map<dynamic, dynamic>;
+        setState(() {
+          isManual = data['active'] as bool;
+          isAutomatic = !isManual;
+          selectedDuration = data['duration'] as int;
+          isIrrigationOn = data['pump_on'] as bool;
+        });
+      }
+    });
+
+    // Listen to pump control data
+    pumpControlSubscription =
+        _databaseReference.child('pump_control').onValue.listen((event) {
+      if (event.snapshot.value != null) {
+        final data = event.snapshot.value as Map;
+        setState(() {
+          // Parse duration
+          var durasiValue = data['durasi'];
+          pumpDuration = durasiValue is int
+              ? durasiValue
+              : durasiValue is String
+                  ? int.tryParse(durasiValue) ?? 0
+                  : durasiValue is double
+                      ? durasiValue.toInt()
+                      : 0;
+
+          // Parse category
+          pumpCategory = data['kategori']?.toString() ??
+              data['category']?.toString() ??
+              '';
+
+          // Parse pump status
+          pumpShouldRun = data['pump_should_run'] as bool? ?? false;
+        });
+      }
+    });
+  }
+
+  // Tambahkan fungsi untuk mengupdate mode lampu
+  void _updateLightMode(bool isManual) {
+    _databaseReference.child('manual_control/light_mode').set(isManual);
+    setState(() {
+      isLightManualMode = isManual;
+    });
+  }
+
+// Tambahkan fungsi untuk mengupdate status lampu
+  void _updateLightStatus(bool isOn) {
+    _databaseReference.child('manual_control/light_on').set(isOn);
+    setState(() {
+      isLightOn = isOn;
+    });
+  }
+
+  void updateAutoMode(bool value) {
+    _databaseReference.child('controls/isAutoMode').set(value);
+    setState(() {
+      isAutoMode = value;
+      if (isAutoMode) {
+        isLightOn = true;
+      }
+    });
+  }
+
+  void toggleManual(bool value) {
+    // If activating manual mode
+    if (value) {
+      _updateIrrigationMode(true);
+    } else {
+      // If turning off manual mode
+      _updateIrrigationMode(false);
+      // Turn off the pump when switching modes
+      _updateIrrigationStatus(false);
+    }
+  }
+
+  void toggleAutomatic(bool value) {
+    // If activating automatic mode
+    if (value) {
+      _updateIrrigationMode(false);
+    } else {
+      // If turning off automatic mode
+      _updateIrrigationMode(true);
+      // Turn off the pump when switching modes
+      _updateIrrigationStatus(false);
+    }
+  }
+
+  // Show duration picker for manual irrigation
+  void _showDurationPicker(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(
+            'Set Duration (second)',
+            style: TextStyle(
+              color: SetColors.Hijau,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) {
+              return Container(
+                height: 200,
+                child: Column(
+                  children: [
+                    Slider(
+                      min: 1,
+                      max: 60,
+                      divisions: 59,
+                      value: selectedDuration.toDouble(),
+                      activeColor: SetColors.Hijau,
+                      onChanged: (value) {
+                        setState(() {
+                          selectedDuration = value.round();
+                        });
+                      },
+                    ),
+                    Text(
+                      '$selectedDuration second',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: SetColors.Hijau,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: SetColors.abuAbu),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: SetColors.Hijau,
+              ),
+              child: Text(
+                'Set',
+                style: TextStyle(color: Colors.white),
+              ),
+              onPressed: () {
+                _updateIrrigationDuration(selectedDuration);
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    // Cancel timer
+    _imageUpdateTimer?.cancel();
+    // Remove observer
+    WidgetsBinding.instance.removeObserver(this);
+    // Cancel stream subscriptions when the page is disposed
+    suhuUdaraSubscription.cancel();
+    lightIntensitySubscription.cancel();
+    kelembapanSubscription.cancel();
+    kelembapanUdaraSubscription.cancel();
+    manualControlSubscription.cancel();
+    pumpControlSubscription.cancel();
+    super.dispose();
+  }
+
+  @override
+  get init => () {
+        // Get user info when page initializes
+        _getCurrentUser();
+        // Load profile image
+        _loadLocalImage();
+        // Set up database listeners
+        _setupDatabaseListeners();
+
+        // Read initial values from Firebase
+        _databaseReference.child('manual_control').get().then((snapshot) {
+          if (snapshot.exists) {
+            final data = snapshot.value as Map<dynamic, dynamic>;
+            setState(() {
+              isManual = data['active'] as bool;
+              isAutomatic = !isManual;
+              selectedDuration = data['duration'] as int;
+              isIrrigationOn = data['pump_on'] as bool;
+            });
+          }
+        });
+      };
+
+  @override
+  Widget view(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: SetColors.backgroundHome,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: SetColors.Putih,
+          toolbarHeight: 80,
+          title: Row(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Hello, $userName !', // Display user name here
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1B4332),
+                    ),
+                  ),
+                  const Text(
+                    'Selamat Datang Di Polije Nursery',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w300,
+                      color: Color(0xFF1B4332),
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              // User avatar - langsung menggunakan CircleAvatar tanpa GestureDetector
+              InkWell(
+                onTap: () {
+                  // Navigate to profile/logout page
+                  Navigator.pushNamed(context, '/logout').then((_) {
+                    // Force reload profile image when returning from logout page
+                    _loadLocalImage();
+                  });
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: CircleAvatar(
+                  backgroundColor: SetColors.Hijau,
+                  radius: 20,
+                  child: _buildProfileAvatar(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 20),
+
+                  // Monitoring
+                  Container(
+                    decoration: BoxDecoration(
+                      color: SetColors.bgMonitoring,
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Monitoring Greenhouse Bunga Krisan',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: SetColors.Hijau,
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  'Tanggal Hari Ini:',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w400,
+                                    color: SetColors.Hijau,
+                                  ),
+                                ),
+                                Text(
+                                  DateTime.now().toString().split(' ')[0],
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w300,
+                                    color: SetColors.Hijau,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Monitoring Cards
+                        Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: buildGaugeCardAtas(
+                                    'Suhu', // Judul
+                                    suhuUdara, // Nilai (double)
+                                    '°C', // Satuan
+                                    SetColors.biruMuda, // Warna gauge
+                                    AssetsImages.suhuUdara, // image
+                                    getKondisiSuhuUdara(suhuUdara), // Kondisi
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Expanded(
+                                  child: buildGaugeCardCahaya(
+                                    'Intensitas Cahaya', // Judul
+                                    lightIntensity, // Nilai (double)
+                                    'lux', // Satuan
+                                    SetColors.lightIntensity, // Warna gauge
+                                    AssetsImages.lightIntensity, // image
+                                    getKondisiCahaya(lightIntensity), // Kondisi
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: buildGaugeCardBawah(
+                                    'Kelembapan Tanah', // Judul
+                                    kelembapan, // Nilai (double)
+                                    '%', // Satuan
+                                    SetColors.kelembapanTanah, // Warna gauge
+                                    AssetsImages.kelembaban, // image
+                                    getKondisiKelembapanTanah(
+                                        kelembapan), // Kondisi
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Expanded(
+                                  child: buildGaugeCardBawah(
+                                    'Kelembaban Udara', // Judul
+                                    kelembapanUdara, // Nilai (double)
+                                    '%', // Satuan
+                                    const Color.fromARGB(
+                                        255, 22, 207, 231), // Warna gauge
+                                    AssetsImages.udara, // image
+                                    getKondisiKelembapanUdara(
+                                        kelembapanUdara), // Kondisi
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: buildControlCard(),
+                                ),
+                              ],
+                            )
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+
+                  // Kontrol Penyiraman
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Text(
+                      'Kontrol Penyiraman :',
+                      style: TextStyle(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w500,
+                        color: SetColors.Hitam,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 2),
+
+                  // Manual irrigation settings
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Switch Manual & Otomatis
+                        Container(
+                          height: 59,
+                          decoration: BoxDecoration(
+                            gradient: SetColors.backgroundMOnitoring,
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          child: Row(
+                            children: [
+                              // Switch Manual
+                              Expanded(
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Text(
+                                      'Manual',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 15),
+                                    Transform.scale(
+                                      scale: 1.1,
+                                      child: Switch(
+                                        value: isManual,
+                                        activeColor: SetColors.biruMuda,
+                                        inactiveThumbColor: SetColors.abuAbu,
+                                        inactiveTrackColor:
+                                            SetColors.abuAbu.withOpacity(0.5),
+                                        activeTrackColor:
+                                            SetColors.biruMuda.withOpacity(0.5),
+                                        overlayColor: MaterialStateProperty.all(
+                                            Colors.transparent),
+                                        trackOutlineColor:
+                                            MaterialStateProperty.resolveWith(
+                                                (states) {
+                                          if (states.contains(
+                                              MaterialState.selected)) {
+                                            return SetColors.biruMuda;
+                                          }
+                                          return SetColors.abuAbu;
+                                        }),
+                                        onChanged: (bool value) {
+                                          toggleManual(value);
+                                        },
+                                        thumbIcon: MaterialStateProperty
+                                            .resolveWith<Icon?>(
+                                          (Set<MaterialState> states) {
+                                            if (states.contains(
+                                                MaterialState.selected)) {
+                                              return Icon(Icons.water_drop,
+                                                  color: SetColors.Putih);
+                                            }
+                                            return Icon(Icons.water_drop,
+                                                color: SetColors.Putih);
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Garis Vertikal Pemisah
+                              SizedBox(
+                                width: 4,
+                                child: Container(
+                                  color: Colors.white,
+                                ),
+                              ),
+
+                              // Switch Otomatis
+                              Expanded(
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Text(
+                                      'Otomatis',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Transform.scale(
+                                      scale: 1.1,
+                                      child: Switch(
+                                        value: isAutomatic,
+                                        activeColor: SetColors.biruMuda,
+                                        inactiveThumbColor: SetColors.abuAbu,
+                                        inactiveTrackColor:
+                                            SetColors.abuAbu.withOpacity(0.5),
+                                        activeTrackColor:
+                                            SetColors.biruMuda.withOpacity(0.5),
+                                        overlayColor: MaterialStateProperty.all(
+                                            Colors.transparent),
+                                        trackOutlineColor:
+                                            MaterialStateProperty.resolveWith(
+                                                (states) {
+                                          if (states.contains(
+                                              MaterialState.selected)) {
+                                            return SetColors.biruMuda;
+                                          }
+                                          return SetColors.abuAbu;
+                                        }),
+                                        onChanged: (bool value) {
+                                          toggleAutomatic(value);
+                                        },
+                                        thumbIcon: MaterialStateProperty
+                                            .resolveWith<Icon?>(
+                                          (Set<MaterialState> states) {
+                                            if (states.contains(
+                                                MaterialState.selected)) {
+                                              return Icon(Icons.autorenew,
+                                                  color: SetColors.Putih);
+                                            }
+                                            return Icon(Icons.autorenew,
+                                                color: SetColors.Putih);
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Pengaturan Penyiraman Manual (hanya jika Manual aktif)
+                        if (isManual) ...[
+                          Container(
+                            padding: const EdgeInsets.all(16.0),
+                            decoration: BoxDecoration(
+                              color: SetColors.bgMonitoring,
+                              borderRadius: BorderRadius.circular(15.0),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Kontrol Penyiraman Manual',
+                                      style: TextStyle(
+                                        fontSize: 23,
+                                        fontWeight: FontWeight.w500,
+                                        color: SetColors.Hitam,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 20),
+
+                                // Switch control for irrigation
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Status Penyiraman',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w400,
+                                        color: SetColors.Hitam,
+                                      ),
+                                    ),
+                                    Switch(
+                                      value: isIrrigationOn,
+                                      onChanged: (value) {
+                                        _updateIrrigationStatus(value);
+                                      },
+                                      activeColor: SetColors.Hijau,
+                                    ),
+                                  ],
+                                ),
+
+                                // Duration control
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Durasi Penyiraman',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w400,
+                                        color: SetColors.Hitam,
+                                      ),
+                                    ),
+                                    TextButton.icon(
+                                      onPressed: () {
+                                        _showDurationPicker(context);
+                                      },
+                                      icon: Icon(
+                                        Icons.timer,
+                                        color: SetColors.Hijau,
+                                      ),
+                                      label: Text(
+                                        '$selectedDuration detik',
+                                        style: TextStyle(
+                                          color: SetColors.Hijau,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                // Status indicator
+                                Container(
+                                  margin: const EdgeInsets.only(top: 16.0),
+                                  padding: const EdgeInsets.all(12.0),
+                                  decoration: BoxDecoration(
+                                    color: isIrrigationOn
+                                        ? Colors.green.withOpacity(0.1)
+                                        : Colors.red.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(10.0),
+                                    border: Border.all(
+                                      color: isIrrigationOn
+                                          ? SetColors.Hijau
+                                          : Colors.red,
+                                      width: 1.0,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        isIrrigationOn
+                                            ? Icons.check_circle
+                                            : Icons.cancel,
+                                        color: isIrrigationOn
+                                            ? SetColors.Hijau
+                                            : Colors.red,
+                                        size: 24,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        isIrrigationOn
+                                            ? 'Penyiraman Aktif'
+                                            : 'Penyiraman Nonaktif',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w500,
+                                          color: isIrrigationOn
+                                              ? SetColors.Hijau
+                                              : Colors.red,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        // Automatic mode status (only if Automatic is active)
+                        if (isAutomatic) ...[
+                          Container(
+                            padding: const EdgeInsets.all(16.0),
+                            decoration: BoxDecoration(
+                              color: SetColors.bgMonitoring,
+                              borderRadius: BorderRadius.circular(15.0),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Mode Penyiraman Otomatis',
+                                      style: TextStyle(
+                                        fontSize: 23,
+                                        fontWeight: FontWeight.w500,
+                                        color: SetColors.Hitam,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 20),
+
+                                // Display current status in automatic mode
+                                Container(
+                                  margin: const EdgeInsets.only(top: 16.0),
+                                  padding: const EdgeInsets.all(12.0),
+                                  decoration: BoxDecoration(
+                                    color: pumpShouldRun
+                                        ? Colors.blue.withOpacity(0.1)
+                                        : Colors.grey.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(10.0),
+                                    border: Border.all(
+                                      color: pumpShouldRun
+                                          ? Colors.blue
+                                          : Colors.grey,
+                                      width: 1.0,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            pumpShouldRun
+                                                ? Icons.water_drop
+                                                : Icons.water_drop_outlined,
+                                            color: pumpShouldRun
+                                                ? Colors.blue
+                                                : Colors.grey,
+                                            size: 24,
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Text(
+                                              pumpShouldRun
+                                                  ? 'Pompa Aktif'
+                                                  : 'Pompa Tidak Aktif',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w500,
+                                                color: pumpShouldRun
+                                                    ? Colors.blue
+                                                    : Colors.grey,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      if (pumpShouldRun &&
+                                          pumpCategory.isNotEmpty) ...[
+                                        const SizedBox(height: 12),
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(left: 36.0),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Kategori: $pumpCategory',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w400,
+                                                  color: Colors.blue,
+                                                ),
+                                              ),
+                                              Text(
+                                                'Durasi: $pumpDuration detik',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w400,
+                                                  color: Colors.blue,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+
+                                // Display current status
+                                // Container(
+                                //   margin: const EdgeInsets.only(top: 16.0),
+                                //   padding: const EdgeInsets.all(12.0),
+                                //   decoration: BoxDecoration(
+                                //     color: SetColors.Hijau.withOpacity(0.1),
+                                //     borderRadius: BorderRadius.circular(10.0),
+                                //   ),
+                                //   child: Row(
+                                //     children: [
+                                //       Icon(
+                                //         Icons.info_outline,
+                                //         color: SetColors.Hijau,
+                                //         size: 24,
+                                //       ),
+                                //       const SizedBox(width: 12),
+                                //       Expanded(
+                                //         child: Text(
+                                //           'Kelembapan tanah saat ini: ${kelembapan.toStringAsFixed(1)}%',
+                                //           style: TextStyle(
+                                //             fontSize: 16,
+                                //             fontWeight: FontWeight.w500,
+                                //             color: SetColors.Hijau,
+                                //           ),
+                                //         ),
+                                //       ),
+                                //     ],
+                                //   ),
+                                // ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+// Menentukan kondisi suhu udara
+  String getKondisiSuhuUdara(double suhu) {
+    if (suhu <= 22) {
+      return 'Dingin';
+    } else if (suhu > 22 && suhu <= 25.5) {
+      return 'Sejuk';
+    } else if (suhu > 25.5 && suhu <= 29) {
+      return 'Normal';
+    }else if (suhu > 29 && suhu <= 34) {
+      return 'Hangat';
+    } else {
+      return 'Panas';
+    }
+  }
+
+// Menentukan kondisi kelembapan tanah
+  String getKondisiKelembapanTanah(double kelembapan) {
+    if (kelembapan <= 75) {
+      return 'Kering';
+    } else if (kelembapan > 75 && kelembapan <= 92.5) {
+      return 'Normal';
+    } else {
+      return 'Basah';
+    }
+  }
+
+// Menentukan kondisi kelembapan udara
+  String getKondisiKelembapanUdara(double kelembapanUdara) {
+    if (kelembapanUdara <= 45) {
+      return 'Kering';
+    } else if (kelembapanUdara > 45 && kelembapanUdara <= 75) {
+      return 'Normal';
+    } else {
+      return 'Basah';
+    }
+  }
+
+// Menentukan kondisi cahaya
+  String getKondisiCahaya(double intensitas) {
+    if (intensitas <= 50) {
+      return 'Gelap';
+    } else if (intensitas > 50 && intensitas <= 150) {
+      return 'Cukup';
+    } else {
+      return 'Terang';
+    }
+  }
+
+  Widget buildGaugeCardCahaya(
+    String title,
+    double value,
+    String unit,
+    Color gaugeColor,
+    String imagePath,
+    String kondisi,
+  ) {
+    return Container(
+      height: 220, // Tambahkan height yang tetap
+      decoration: BoxDecoration(
+        gradient: SetColors.backgroundMOnitoring,
+        borderRadius: BorderRadius.circular(15),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w300,
+              color: SetColors.Putih,
+            ),
+          ),
+          SizedBox(
+            height: 5,
+          ),
+          Container(
+            width: double.infinity,
+            height: 2,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.white.withOpacity(0.05),
+                  Colors.white.withOpacity(0.8),
+                  Colors.white.withOpacity(0.05),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Center(
+              child: Container(
+                width: 90,
+                height: 90,
+                child: Center(
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: 90,
+                        height: 90,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: SfRadialGauge(
+                          axes: <RadialAxis>[
+                            RadialAxis(
+                              minimum: 0,
+                              maximum: 65000,
+                              showLabels: false,
+                              showTicks: false,
+                              startAngle: 270,
+                              endAngle: 270,
+                              radiusFactor: 1,
+                              axisLineStyle: AxisLineStyle(
+                                thickness: 10,
+                                color: gaugeColor.withOpacity(0.2),
+                                thicknessUnit: GaugeSizeUnit.logicalPixel,
+                              ),
+                              pointers: <GaugePointer>[
+                                RangePointer(
+                                  value: value,
+                                  width: 15,
+                                  color: gaugeColor,
+                                  enableAnimation: true,
+                                  cornerStyle: CornerStyle.bothCurve,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Image.asset(
+                        imagePath,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                getKeterangan(kondisi, unit),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w300,
+                  color: SetColors.Putih,
+                ),
+              ),
+              Text(
+                getNilaiText(value, unit),
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w300,
+                  color: SetColors.Putih,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Widget untuk Card Monitoring dengan Gauge Atas
+  Widget buildGaugeCardAtas(
+    String title,
+    double value,
+    String unit,
+    Color gaugeColor,
+    String imagePath,
+    String kondisi,
+  ) {
+    return Container(
+      height: 220, // Tambahkan height yang tetap
+      decoration: BoxDecoration(
+        gradient: SetColors.backgroundMOnitoring,
+        borderRadius: BorderRadius.circular(15),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w300,
+              color: SetColors.Putih,
+            ),
+          ),
+          SizedBox(
+            height: 5,
+          ),
+          Container(
+            width: double.infinity,
+            height: 2,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.white.withOpacity(0.05),
+                  Colors.white.withOpacity(0.8),
+                  Colors.white.withOpacity(0.05),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Center(
+              child: Container(
+                width: 90,
+                height: 90,
+                child: Center(
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: 90,
+                        height: 90,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: SfRadialGauge(
+                          axes: <RadialAxis>[
+                            RadialAxis(
+                              minimum: 0,
+                              maximum: 100,
+                              showLabels: false,
+                              showTicks: false,
+                              startAngle: 270,
+                              endAngle: 270,
+                              radiusFactor: 1,
+                              axisLineStyle: AxisLineStyle(
+                                thickness: 10,
+                                color: gaugeColor.withOpacity(0.2),
+                                thicknessUnit: GaugeSizeUnit.logicalPixel,
+                              ),
+                              pointers: <GaugePointer>[
+                                RangePointer(
+                                  value: value,
+                                  width: 15,
+                                  color: gaugeColor,
+                                  enableAnimation: true,
+                                  cornerStyle: CornerStyle.bothCurve,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Image.asset(
+                        imagePath,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                getKeterangan(kondisi, unit),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w300,
+                  color: SetColors.Putih,
+                ),
+              ),
+              Text(
+                getNilaiText(value, unit),
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w300,
+                  color: SetColors.Putih,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Widget untuk Card Monitoring dengan Gauge
+  Widget buildGaugeCardBawah(
+    String title,
+    double value,
+    String unit,
+    Color gaugeColor,
+    String imagePath,
+    String kondisi,
+  ) {
+    return Container(
+      height: 220, // Tambahkan height yang tetap
+      decoration: BoxDecoration(
+        gradient: SetColors.backgroundMOnitoring,
+        borderRadius: BorderRadius.circular(15),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w300,
+              color: SetColors.Putih,
+            ),
+          ),
+          SizedBox(
+            height: 5,
+          ),
+          Container(
+            width: double.infinity,
+            height: 2,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.white.withOpacity(0.05),
+                  Colors.white.withOpacity(0.8),
+                  Colors.white.withOpacity(0.05),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Center(
+              child: Container(
+                width: 90,
+                height: 90,
+                child: Center(
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: 90,
+                        height: 90,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: SfRadialGauge(
+                          axes: <RadialAxis>[
+                            RadialAxis(
+                              minimum: 0,
+                              maximum: 100,
+                              showLabels: false,
+                              showTicks: false,
+                              startAngle: 270,
+                              endAngle: 270,
+                              radiusFactor: 1,
+                              axisLineStyle: AxisLineStyle(
+                                thickness: 10,
+                                color: gaugeColor.withOpacity(0.2),
+                                thicknessUnit: GaugeSizeUnit.logicalPixel,
+                              ),
+                              pointers: <GaugePointer>[
+                                RangePointer(
+                                  value: value,
+                                  width: 15,
+                                  color: gaugeColor,
+                                  enableAnimation: true,
+                                  cornerStyle: CornerStyle.bothCurve,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: Image.asset(
+                          imagePath,
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    '$title: ',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w300,
+                      color: SetColors.Putih,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      kondisi,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w300,
+                        color: SetColors.Putih,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                getNilaiText(value, unit),
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w300,
+                  color: SetColors.Putih,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildControlCard() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: SetColors.backgroundMOnitoring,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header yang lebih kompak
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Image.asset(AssetsImages.kontrolCahaya, width: 22),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Kontrol Cahaya',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Garis pemisah yang lebih kompak
+          Container(
+            width: double.infinity,
+            height: 1.5,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.white.withOpacity(0.05),
+                  Colors.white.withOpacity(0.6),
+                  Colors.white.withOpacity(0.05),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          // Toggle Otomatis/Manual
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 9),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      isLightManualMode ? Icons.touch_app : Icons.auto_fix_high,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Mode: ',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 14,
+                      ),
+                    ),
+                    Text(
+                      isLightManualMode ? 'Manual' : 'Otomatis',
+                      style: TextStyle(
+                        color: isLightManualMode
+                            ? Colors.white
+                            : SetColors.lightIntensity,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+                Transform.scale(
+                  scale: 0.8,
+                  child: Switch(
+                    value: isLightManualMode,
+                    activeColor: SetColors.lightIntensity,
+                    inactiveThumbColor: SetColors.abuAbu,
+                    trackOutlineColor:
+                        MaterialStateProperty.all(Colors.transparent),
+                    onChanged: (value) {
+                      _updateLightMode(value);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          // Switch dan status lampu dalam bentuk Row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 55,
+              ),
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isLightOn
+                      ? SetColors.lightIntensity.withOpacity(0.2)
+                      : Colors.white.withOpacity(0.1),
+                  boxShadow: isLightOn
+                      ? [
+                          BoxShadow(
+                            color: SetColors.lightIntensity.withOpacity(0.4),
+                            blurRadius: 20,
+                            spreadRadius: 3,
+                          )
+                        ]
+                      : null,
+                ),
+                child: Center(
+                  child: Transform.scale(
+                    scale: 0.8,
+                    child: Switch(
+                      value: isLightOn,
+                      activeColor: SetColors.lightIntensity,
+                      inactiveThumbColor: SetColors.abuAbu,
+                      inactiveTrackColor: SetColors.abuAbu.withOpacity(0.3),
+                      activeTrackColor:
+                          SetColors.lightIntensity.withOpacity(0.5),
+                      overlayColor:
+                          MaterialStateProperty.all(Colors.transparent),
+                      trackOutlineColor:
+                          MaterialStateProperty.resolveWith((states) {
+                        if (isLightOn) {
+                          return SetColors.lightIntensity;
+                        }
+                        return SetColors.abuAbu;
+                      }),
+                      thumbColor: MaterialStateProperty.resolveWith((states) {
+                        if (isLightOn) {
+                          return SetColors.lightIntensity;
+                        }
+                        return SetColors.abuAbu;
+                      }),
+                      onChanged: isLightManualMode
+                          ? (bool value) {
+                              _updateLightStatus(value);
+                            }
+                          : null, // Disabled saat mode otomatis
+                      thumbIcon: MaterialStateProperty.resolveWith<Icon?>(
+                        (Set<MaterialState> states) {
+                          if (isLightOn) {
+                            return Icon(Icons.lightbulb,
+                                color: SetColors.Putih, size: 16);
+                          }
+                          return Icon(Icons.lightbulb_outline,
+                              color: SetColors.Putih, size: 16);
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              SizedBox(
+                width: 35,
+              ),
+
+              // Status lampu yang lebih kompak
+              Expanded(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isLightOn
+                        ? SetColors.lightIntensity.withOpacity(0.3)
+                        : Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: isLightOn
+                          ? SetColors.lightIntensity
+                          : Colors.white.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      isLightOn ? 'LAMPU MENYALA' : 'LAMPU MATI',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isLightOn
+                            ? SetColors.lightIntensity
+                            : Colors.white70,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              SizedBox(
+                width: 55,
+              ),
+            ],
+          ),
+
+          const SizedBox(
+            height: 15,
+          ),
+
+          // Keterangan otomatis tetap dalam Column (di bawah)
+          if (!isLightManualMode)
+            Center(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.2),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: Colors.white70,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Lampu dikontrol secara otomatis',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String getKeterangan(String namaSensor, String unit) {
+    switch (unit.toLowerCase()) {
+      case '°c':
+        return 'Suhu: $namaSensor';
+      case 'lux':
+        return 'Intensitas Cahaya: $namaSensor';
+      default:
+        return 'Kondisi: $namaSensor';
+    }
+  }
+
+  String getNilaiText(double value, String unit) {
+    switch (unit.toLowerCase()) {
+      case '°c':
+        return 'Nilai suhu: ${value.toStringAsFixed(1)} °C';
+      case '%':
+        return 'Tingkat kelembaban: ${value.toStringAsFixed(1)} %';
+      case 'lux':
+        return 'Tingkat cahaya: ${value.toStringAsFixed(0)} lux';
+      default:
+        return 'Nilai: ${value.toString()} $unit';
+    }
+  }
+}

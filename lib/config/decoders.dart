@@ -1,4 +1,8 @@
-import '/app/controllers/home_controller.dart';
+import '/app/models/fuzzy_result.dart';
+import '/app/controllers/home_page_controller.dart';
+import '/app/models/home.dart';
+import '/app/controllers/home_screen_controller.dart';
+// import '/app/controllers/home_controller.dart';
 import '/app/models/user.dart';
 import '/app/networking/api_service.dart';
 
@@ -19,6 +23,15 @@ final Map<Type, dynamic> modelDecoders = {
   User: (data) => User.fromJson(data),
 
   // User: (data) => User.fromJson(data),
+
+  List<Home>: (data) =>
+      List.from(data).map((json) => Home.fromJson(json)).toList(),
+
+  Home: (data) => Home.fromJson(data),
+
+  List<FuzzyResult>: (data) => List.from(data).map((json) => FuzzyResult.fromJson(json)).toList(),
+
+  FuzzyResult: (data) => FuzzyResult.fromJson(data),
 };
 
 /* API Decoders
@@ -42,7 +55,11 @@ final Map<Type, dynamic> apiDecoders = {
 | Learn more https://nylo.dev/docs/6.x/controllers
 |-------------------------------------------------------------------------- */
 final Map<Type, dynamic> controllers = {
-  HomeController: () => HomeController(),
+  // HomeController: () => HomeController(),
 
   // ...
+
+  HomeScreenController: () => HomeScreenController(),
+
+  HomePageController: () => HomePageController(),
 };

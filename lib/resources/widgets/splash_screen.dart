@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '/resources/widgets/logo_widget.dart';
+import 'package:flutter_app/config/colors_config.dart';
+import 'package:flutter_app/resources/widgets/logo_text_widget.dart';
 import 'dart:math';
 
 class SplashScreen extends StatelessWidget {
@@ -17,11 +18,11 @@ class SplashScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        color: Colors.white,
+        color: SetColors.Hijau,
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: [Logo(), SizedBox(height: 50), AnimatedLoader()],
+            children: [LogoText(), SizedBox(height: 10), AnimatedLoader()],
           ),
         ),
       ),
@@ -35,8 +36,8 @@ class AnimatedLoader extends StatefulWidget {
 
   const AnimatedLoader({
     super.key,
-    this.size = 50.0,
-    this.color = Colors.blue,
+    this.size = 30.0,
+    this.color = SetColors.Coklat,
   });
 
   @override
@@ -52,7 +53,7 @@ class _AnimatedLoaderState extends State<AnimatedLoader>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 4500),
     )..repeat();
   }
 
