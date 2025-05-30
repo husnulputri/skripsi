@@ -1,0 +1,1054 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_app/config/colors_config.dart';
+import 'package:intl/intl.dart';
+import 'package:nylo_framework/nylo_framework.dart';
+import 'package:syncfusion_flutter_datepicker/datepicker.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'dart:async';
+
+class HistoryPage extends NyStatefulWidget {
+  static RouteView path = ("/history", (_) => HistoryPage());
+
+  HistoryPage({super.key}) : super(child: () => _HistoryPageState());
+}
+
+class _HistoryPageState extends NyPage<HistoryPage> {
+  @override
+  get init => () {};
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Riwayat Aktivitas',
+      debugShowCheckedModeBanner: false,
+      home: const ActivityHistoryPage(),
+    );
+  }
+}
+
+// Base class for all activity records
+abstract class ActivityRecord {
+  final String type; // 'Manual' or 'Otomatis'
+  final DateTime dateTime;
+  final double temperature;
+  final double soilHumidity;
+  final double airHumidity;
+  final double lightIntensity;
+
+  ActivityRecord({
+    required this.type,
+    required this.dateTime,
+    required this.temperature,
+    required this.soilHumidity,
+    required this.airHumidity,
+    required this.lightIntensity,
+  });
+
+  // Abstract method to get the activity icon
+  IconData getActivityIcon();
+
+  // Abstract method to get the activity color
+  Color getActivityColor();
+
+  // Abstract method to get activity title
+  String getActivityTitle();
+
+  // Abstract method to get activity details
+  List<Widget> getActivityDetails(BuildContext context);
+
+  // Method to get background color
+  Color getBackgroundColor() {
+    return getActivityColor().withOpacity(0.1);
+  }
+}
+
+class WateringRecord extends ActivityRecord {
+  final String duration;
+
+  WateringRecord({
+    required String type,
+    required DateTime dateTime,
+    required this.duration,
+    required double temperature,
+    required double soilHumidity,
+    required double airHumidity,
+    required double lightIntensity,
+  }) : super(
+          type: type,
+          dateTime: dateTime,
+          temperature: temperature,
+          soilHumidity: soilHumidity,
+          airHumidity: airHumidity,
+          lightIntensity: lightIntensity,
+        );
+
+  factory WateringRecord.fromFirebase(Map<dynamic, dynamic> data, String type) {
+    // Extract timestamp and convert to DateTime with explicit timezone correction
+    int timestamp = data['timestamp'] as int;
+
+    // Method 3: Alternative approach using hardcoded Jakarta timezone (UTC+7)
+    DateTime jakartaDateTime = DateTime.fromMillisecondsSinceEpoch(
+      timestamp * 1000, // Use the original timestamp without adjustment
+      isUtc: false,
+    );
+
+    // Extract duration and format appropriately
+    int durationSeconds = data['duration'] as int;
+    String formattedDuration = '';
+    if (durationSeconds >= 60) {
+      int minutes = durationSeconds ~/ 60;
+      int seconds = durationSeconds % 60;
+      formattedDuration =
+          '$minutes menit ${seconds > 0 ? '$seconds detik' : ''}';
+    } else {
+      formattedDuration = '$durationSeconds detik';
+    }
+
+    // Extract sensor values with defaults if missing
+    Map<dynamic, dynamic> sensorValues = data['sensor_values'] ?? {};
+    double temperature =
+        (sensorValues['temperature'] as num?)?.toDouble() ?? 0.0;
+    double soilHumidity =
+        (sensorValues['soil_moisture'] as num?)?.toDouble() ?? 0.0;
+    double airHumidity = (sensorValues['humidity'] as num?)?.toDouble() ?? 0.0;
+    double lightIntensity =
+        (sensorValues['light_intensity'] as num?)?.toDouble() ?? 0.0;
+
+    return WateringRecord(
+      type: type == 'auto' ? 'Otomatis' : 'Manual',
+      dateTime: jakartaDateTime,
+      duration: formattedDuration,
+      temperature: temperature,
+      soilHumidity: soilHumidity,
+      airHumidity: airHumidity,
+      lightIntensity: lightIntensity,
+    );
+  }
+
+  @override
+  IconData getActivityIcon() {
+    return type == 'Otomatis' ? Icons.autorenew : Icons.touch_app;
+  }
+
+  @override
+  Color getActivityColor() {
+    return type == 'Otomatis' ? Colors.blue : Colors.orange;
+  }
+
+  @override
+  String getActivityTitle() {
+    return 'Menyiram $type';
+  }
+
+  @override
+  List<Widget> getActivityDetails(BuildContext context) {
+    return [
+      Text(
+        'Durasi: $duration',
+        style: const TextStyle(
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    ];
+  }
+}
+
+class LightRecord extends ActivityRecord {
+  final bool status; // true = ON, false = OFF
+
+  LightRecord({
+    required String type,
+    required DateTime dateTime,
+    required this.status,
+    required double temperature,
+    required double soilHumidity,
+    required double airHumidity,
+    required double lightIntensity,
+  }) : super(
+          type: type,
+          dateTime: dateTime,
+          temperature: temperature,
+          soilHumidity: soilHumidity,
+          airHumidity: airHumidity,
+          lightIntensity: lightIntensity,
+        );
+
+  factory LightRecord.fromFirebase(Map<dynamic, dynamic> data, String type) {
+    // Extract timestamp and convert to DateTime
+    // Method 1: Apply timezone offset explicitly
+    DateTime jakartaDateTime = DateTime.fromMillisecondsSinceEpoch(
+      timestamp * 1000,
+      isUtc: true,
+    ).add(const Duration(hours: 7)); // UTC+7 for Jakarta
+
+    // Method 2: Use package:timezone for more robust timezone handling
+    // First, import the package and initialize timezones
+    // import 'package:timezone/timezone.dart' as tz;
+    // import 'package:timezone/data/latest.dart' as tz_data;
+    // Then in your initialization code: tz_data.initializeTimeZones();
+    DateTime jakartaDateTime = tz.TZDateTime.fromMillisecondsSinceEpoch(
+      tz.getLocation('Asia/Jakarta'),
+      timestamp * 1000
+    );
+
+    // Extract status
+    bool status = data['status'] as bool;
+
+    // Extract sensor values with defaults if missing
+    Map<dynamic, dynamic> sensorValues = data['sensor_values'] ?? {};
+    double temperature =
+        (sensorValues['temperature'] as num?)?.toDouble() ?? 0.0;
+    double soilHumidity =
+        (sensorValues['soil_moisture'] as num?)?.toDouble() ?? 0.0;
+    double airHumidity = (sensorValues['humidity'] as num?)?.toDouble() ?? 0.0;
+    double lightIntensity =
+        (sensorValues['light_intensity'] as num?)?.toDouble() ?? 0.0;
+
+    return LightRecord(
+      type: type == 'auto' ? 'Otomatis' : 'Manual',
+      dateTime: dateTime,
+      status: status,
+      temperature: temperature,
+      soilHumidity: soilHumidity,
+      airHumidity: airHumidity,
+      lightIntensity: lightIntensity,
+    );
+  }
+
+  @override
+  IconData getActivityIcon() {
+    return type == 'Otomatis' ? Icons.auto_mode : Icons.touch_app;
+  }
+
+  @override
+  Color getActivityColor() {
+    return type == 'Otomatis' ? Colors.purple : Colors.amber;
+  }
+
+  @override
+  String getActivityTitle() {
+    return 'Lampu $type';
+  }
+
+  @override
+  List<Widget> getActivityDetails(BuildContext context) {
+    return [
+      Row(
+        children: [
+          Icon(
+            Icons.lightbulb,
+            color: status ? Colors.amber[400] : Colors.grey[400],
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Kondisi: ${status ? "ON" : "OFF"}',
+            style: TextStyle(
+              color: status ? SetColors.Hijau : Colors.red[600],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+}
+
+class ActivityHistoryPage extends StatefulWidget {
+  const ActivityHistoryPage({Key? key}) : super(key: key);
+
+  @override
+  State<ActivityHistoryPage> createState() => _ActivityHistoryPageState();
+}
+
+class _ActivityHistoryPageState extends State<ActivityHistoryPage>
+    with SingleTickerProviderStateMixin {
+  // List to store all records (both watering and light)
+  final List<ActivityRecord> allRecords = [];
+  List<ActivityRecord> filteredRecords = [];
+
+  // Filter settings
+  DateTimeRange selectedDateRange = DateTimeRange(
+    start: DateTime.now().subtract(const Duration(days: 7)),
+    end: DateTime.now(),
+  );
+  bool isCalendarVisible = false;
+  bool isLoading = true;
+  String errorMessage = '';
+
+  // Filter by activity type
+  String selectedActivityFilter =
+      'Semua'; // 'Semua', 'Penyiraman', 'Pencahayaan'
+
+  // Subscriptions
+  StreamSubscription? _wateringLogSubscription;
+  StreamSubscription? _lightLogSubscription;
+
+  // Tab controller
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_handleTabSelection);
+    _setupRealtimeListeners();
+  }
+
+  void _handleTabSelection() {
+    setState(() {
+      switch (_tabController.index) {
+        case 0:
+          selectedActivityFilter = 'Semua';
+          break;
+        case 1:
+          selectedActivityFilter = 'Penyiraman';
+          break;
+        case 2:
+          selectedActivityFilter = 'Pencahayaan';
+          break;
+      }
+      _filterRecords();
+    });
+  }
+
+  @override
+  void dispose() {
+    _wateringLogSubscription?.cancel();
+    _lightLogSubscription?.cancel();
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _setupRealtimeListeners() {
+    setState(() {
+      isLoading = true;
+      errorMessage = '';
+    });
+
+    try {
+      // Listener for watering logs
+      final wateringRef = FirebaseDatabase.instance.ref('watering_log');
+      _wateringLogSubscription = wateringRef.onValue.listen((event) {
+        if (event.snapshot.exists) {
+          final data = event.snapshot.value as Map<dynamic, dynamic>;
+          _processWateringData(data);
+        }
+      }, onError: (error) {
+        _handleError('Error saat mengambil data penyiraman: $error');
+      });
+
+      // Listener for light logs
+      final lightRef = FirebaseDatabase.instance.ref('light_log');
+      _lightLogSubscription = lightRef.onValue.listen((event) {
+        if (event.snapshot.exists) {
+          final data = event.snapshot.value as Map<dynamic, dynamic>;
+          _processLightData(data);
+        }
+      }, onError: (error) {
+        _handleError('Error saat mengambil data pencahayaan: $error');
+      });
+    } catch (e) {
+      _handleError('Error: Tidak dapat mengambil data: $e');
+    }
+  }
+
+  void _handleError(String error) {
+    setState(() {
+      errorMessage = error;
+      isLoading = false;
+    });
+  }
+
+  void _processWateringData(Map<dynamic, dynamic> data) {
+    // Remove existing watering records to avoid duplicates
+    allRecords.removeWhere((record) => record is WateringRecord);
+
+    // Process auto watering logs
+    if (data.containsKey('auto') && data['auto'] is Map) {
+      final autoData = data['auto'] as Map<dynamic, dynamic>;
+      autoData.forEach((key, value) {
+        if (value is Map) {
+          allRecords.add(WateringRecord.fromFirebase(value, 'auto'));
+        }
+      });
+    }
+
+    // Process manual watering logs
+    if (data.containsKey('manual') && data['manual'] is Map) {
+      final manualData = data['manual'] as Map<dynamic, dynamic>;
+      manualData.forEach((key, value) {
+        if (value is Map) {
+          allRecords.add(WateringRecord.fromFirebase(value, 'manual'));
+        }
+      });
+    }
+
+    // Sort and filter records
+    _sortAndFilterRecords();
+  }
+
+  void _processLightData(Map<dynamic, dynamic> data) {
+    // Remove existing light records to avoid duplicates
+    allRecords.removeWhere((record) => record is LightRecord);
+
+    // Process auto light logs
+    if (data.containsKey('auto') && data['auto'] is Map) {
+      final autoData = data['auto'] as Map<dynamic, dynamic>;
+      autoData.forEach((key, value) {
+        if (value is Map) {
+          allRecords.add(LightRecord.fromFirebase(value, 'auto'));
+        }
+      });
+    }
+
+    // Process manual light logs
+    if (data.containsKey('manual') && data['manual'] is Map) {
+      final manualData = data['manual'] as Map<dynamic, dynamic>;
+      manualData.forEach((key, value) {
+        if (value is Map) {
+          allRecords.add(LightRecord.fromFirebase(value, 'manual'));
+        }
+      });
+    }
+
+    // Sort and filter records
+    _sortAndFilterRecords();
+  }
+
+  void _sortAndFilterRecords() {
+    // Sort records by date (newest first)
+    allRecords.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+
+    // Filter and update UI
+    _filterRecords();
+
+    setState(() {
+      isLoading = false;
+    });
+  }
+
+  void _filterRecords() {
+    // First filter by date range
+    List<ActivityRecord> dateFiltered =
+        _filterRecordsByDateRange(allRecords, selectedDateRange);
+
+    // Then filter by activity type if needed
+    if (selectedActivityFilter == 'Penyiraman') {
+      filteredRecords =
+          dateFiltered.where((record) => record is WateringRecord).toList();
+    } else if (selectedActivityFilter == 'Pencahayaan') {
+      filteredRecords =
+          dateFiltered.where((record) => record is LightRecord).toList();
+    } else {
+      // 'Semua' option - no additional filtering needed
+      filteredRecords = dateFiltered;
+    }
+  }
+
+  List<ActivityRecord> _filterRecordsByDateRange(
+      List<ActivityRecord> records, DateTimeRange dateRange) {
+    return records.where((record) {
+      return (record.dateTime.isAfter(dateRange.start) ||
+              record.dateTime.isAtSameMomentAs(dateRange.start)) &&
+          (record.dateTime
+                  .isBefore(dateRange.end.add(const Duration(days: 1))) ||
+              record.dateTime.isAtSameMomentAs(dateRange.end));
+    }).toList();
+  }
+
+  void _onSelectionChanged(DateRangePickerSelectionChangedArgs args) {
+    if (args.value is PickerDateRange) {
+      final PickerDateRange range = args.value;
+      if (range.startDate != null && range.endDate != null) {
+        setState(() {
+          selectedDateRange = DateTimeRange(
+            start: range.startDate!,
+            end: range.endDate!,
+          );
+          _filterRecords();
+        });
+      }
+    }
+  }
+
+  void _showDateRangePicker() {
+    setState(() {
+      isCalendarVisible = !isCalendarVisible;
+    });
+  }
+
+  String _getFormattedDateRange() {
+    final startDate = DateFormat('dd MMM').format(selectedDateRange.start);
+    final endDate = DateFormat('dd MMM').format(selectedDateRange.end);
+    return '$startDate - $endDate';
+  }
+
+  Future<void> _refreshData() async {
+    // Cancel existing subscriptions
+    _wateringLogSubscription?.cancel();
+    _lightLogSubscription?.cancel();
+
+    // Clear all records
+    allRecords.clear();
+    filteredRecords.clear();
+
+    // Setup new listeners
+    _setupRealtimeListeners();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Count statistics
+    int totalActivities = filteredRecords.length;
+    int wateringCount =
+        filteredRecords.where((r) => r is WateringRecord).length;
+    int lightCount = filteredRecords.where((r) => r is LightRecord).length;
+
+    // Count automatic and manual activities
+    int automaticCount =
+        filteredRecords.where((r) => r.type == 'Otomatis').length;
+    int manualCount = filteredRecords.where((r) => r.type == 'Manual').length;
+
+    return Scaffold(
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: SetColors.Hijau,
+        title: const Text(
+          'Riwayat Aktivitas',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: SetColors.Putih,
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: SetColors.Putih),
+            onPressed: _refreshData,
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refreshData,
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              decoration: BoxDecoration(
+                gradient: SetColors.backgroundMOnitoring,
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(30),
+                  bottomRight: Radius.circular(30),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '$totalActivities aktivitas',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: _showDateRangePicker,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.calendar_today_rounded,
+                                color: SetColors.Hijau,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                _getFormattedDateRange(),
+                                style: const TextStyle(
+                                  color: SetColors.Hijau,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(width: 5),
+                              Icon(
+                                isCalendarVisible
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                                color: SetColors.Hijau,
+                                size: 16,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (isCalendarVisible)
+                    Container(
+                      margin: const EdgeInsets.only(top: 10),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: SetColors.Putih,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            spreadRadius: 1,
+                            blurRadius: 5,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: SfDateRangePicker(
+                        onSelectionChanged: _onSelectionChanged,
+                        selectionMode: DateRangePickerSelectionMode.range,
+                        initialSelectedRange: PickerDateRange(
+                          selectedDateRange.start,
+                          selectedDateRange.end,
+                        ),
+                        monthViewSettings:
+                            const DateRangePickerMonthViewSettings(
+                          firstDayOfWeek: 1,
+                        ),
+                        headerStyle: DateRangePickerHeaderStyle(
+                          textStyle: TextStyle(
+                            color: SetColors.Hijau,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        selectionColor: SetColors.Hijau,
+                        startRangeSelectionColor: SetColors.Hijau,
+                        endRangeSelectionColor: SetColors.Hijau,
+                        rangeSelectionColor: SetColors.Hijau,
+                        todayHighlightColor: SetColors.Hijau,
+                        monthCellStyle: DateRangePickerMonthCellStyle(
+                          todayTextStyle:
+                              const TextStyle(color: SetColors.Hijau),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      buildInfoCard(
+                        icon: Icons.history,
+                        title: 'Total Aktivitas',
+                        value: '$totalActivities',
+                        color: Colors.teal,
+                      ),
+                      const SizedBox(width: 10),
+                      buildInfoCard(
+                        icon: Icons.water_drop,
+                        title: 'Penyiraman',
+                        value: '$wateringCount',
+                        color: Colors.blue,
+                      ),
+                      const SizedBox(width: 10),
+                      buildInfoCard(
+                        icon: Icons.lightbulb,
+                        title: 'Pencahayaan',
+                        value: '$lightCount',
+                        color: Colors.amber,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      buildInfoCard(
+                        icon: Icons.auto_mode,
+                        title: 'Otomatis',
+                        value: '$automaticCount',
+                        color: Colors.purple,
+                      ),
+                      const SizedBox(width: 10),
+                      buildInfoCard(
+                        icon: Icons.touch_app,
+                        title: 'Manual',
+                        value: '$manualCount',
+                        color: Colors.deepOrange,
+                      ),
+                      const SizedBox(width: 10),
+                      // Empty container for alignment
+                      const Expanded(child: SizedBox()),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // Tab bar for filtering
+            TabBar(
+              controller: _tabController,
+              labelColor: SetColors.Hijau,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: SetColors.Hijau,
+              tabs: const [
+                Tab(text: 'Semua'),
+                Tab(text: 'Penyiraman'),
+                Tab(text: 'Pencahayaan'),
+              ],
+            ),
+
+            Expanded(
+              child: isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: SetColors.Hijau,
+                      ),
+                    )
+                  : errorMessage.isNotEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: 70,
+                                color: SetColors.Hijau60Opacity,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                errorMessage,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500,
+                                  color: SetColors.Hijau60Opacity,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        )
+                      : filteredRecords.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    selectedActivityFilter == 'Penyiraman'
+                                        ? Icons.water_drop_outlined
+                                        : selectedActivityFilter ==
+                                                'Pencahayaan'
+                                            ? Icons.lightbulb_outline
+                                            : Icons.history,
+                                    size: 70,
+                                    color: SetColors.Hijau60Opacity,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Tidak ada data ${selectedActivityFilter.toLowerCase()}',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w500,
+                                      color: SetColors.Hijau60Opacity,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Coba pilih rentang tanggal yang berbeda',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: SetColors.Hijau60Opacity,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: filteredRecords.length,
+                              itemBuilder: (context, index) {
+                                final record = filteredRecords[index];
+                                bool showDate = index == 0 ||
+                                    DateFormat('yyyy-MM-dd')
+                                            .format(record.dateTime) !=
+                                        DateFormat('yyyy-MM-dd').format(
+                                            filteredRecords[index - 1]
+                                                .dateTime);
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (showDate)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                            left: 8, top: 8, bottom: 12),
+                                        child: Text(
+                                          DateFormat('EEEE, dd MMMM yyyy')
+                                              .format(record.dateTime),
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                            color: SetColors.Hijau,
+                                          ),
+                                        ),
+                                      ),
+                                    Container(
+                                      margin: const EdgeInsets.only(bottom: 16),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(16),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.grey.withOpacity(0.1),
+                                            spreadRadius: 1,
+                                            blurRadius: 5,
+                                            offset: const Offset(0, 3),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          // Activity section
+                                          Container(
+                                            padding: const EdgeInsets.all(16),
+                                            decoration: BoxDecoration(
+                                              color:
+                                                  record.getBackgroundColor(),
+                                              borderRadius:
+                                                  const BorderRadius.only(
+                                                topLeft: Radius.circular(16),
+                                                topRight: Radius.circular(16),
+                                              ),
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.all(10),
+                                                  decoration: BoxDecoration(
+                                                    color: record
+                                                        .getActivityColor()
+                                                        .withOpacity(0.3),
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: Icon(
+                                                    record.getActivityIcon(),
+                                                    color: record
+                                                        .getActivityColor(),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 16),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Row(
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .spaceBetween,
+                                                        children: [
+                                                          Text(
+                                                            record
+                                                                .getActivityTitle(),
+                                                            style: TextStyle(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              fontSize: 16,
+                                                              color: record
+                                                                  .getActivityColor(),
+                                                            ),
+                                                          ),
+                                                          Text(
+                                                            DateFormat('HH:mm')
+                                                                .format(record
+                                                                    .dateTime),
+                                                            style: TextStyle(
+                                                              color: Colors
+                                                                  .grey[600],
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w500,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      ...record
+                                                          .getActivityDetails(
+                                                              context),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+
+                                          // Sensor details section
+                                          Container(
+                                            padding: const EdgeInsets.all(16),
+                                            child: Column(
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    _buildDetailItem(
+                                                      icon: Icons.thermostat,
+                                                      label: 'Suhu',
+                                                      value:
+                                                          '${record.temperature}°',
+                                                      color: Colors.red[400]!,
+                                                    ),
+                                                    _buildDetailItem(
+                                                      icon:
+                                                          Icons.water_outlined,
+                                                      label: 'Kelembapan tanah',
+                                                      value:
+                                                          '${record.soilHumidity}%',
+                                                      color: Colors.blue[400]!,
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 12),
+                                                Row(
+                                                  children: [
+                                                    _buildDetailItem(
+                                                      icon: Icons.wb_sunny,
+                                                      label: 'Cahaya',
+                                                      value:
+                                                          '${record.lightIntensity} lux',
+                                                      color: Colors.amber[400]!,
+                                                    ),
+                                                    _buildDetailItem(
+                                                      icon: Icons.air,
+                                                      label: 'Kelembapan udara',
+                                                      value:
+                                                          '${record.airHumidity}%',
+                                                      color: Colors.teal[400]!,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildInfoCard({
+    required IconData icon,
+    required String title,
+    required String value,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.8),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(1.0),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: SetColors.Hijau,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: SetColors.Hijau,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailItem({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 13,
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

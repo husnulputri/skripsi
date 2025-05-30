@@ -1,0 +1,86 @@
+# Nylo - Micro-framework for Flutter.
+#
+# Website: https://nylo.dev
+# Official repository: https://github.com/nylo-core/nylo
+# Author: Anthony Gordon <https://github.com/agordn52>
+
+name: flutter_app
+description: A new Nylo Flutter application.
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: ">=3.24.0 <4.0.0"
+dependencies:
+  url_launcher: ^6.2.6
+  google_fonts: ^6.2.1
+  analyzer: ^6.7.0
+  intl: ^0.19.0
+  nylo_framework: 6.8.6
+  pretty_dio_logger: ^1.4.0
+  cupertino_icons: ^1.0.8
+  path_provider: ^2.1.4
+  flutter_local_notifications: ^19.1.0
+  font_awesome_flutter: ^10.8.0
+  scaffold_ui: ^1.2.7
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  firebase_core: ^3.12.1
+  firebase_auth: ^5.5.1
+  fluttertoast: ^8.2.12
+  syncfusion_flutter_gauges: ^28.1.41
+  syncfusion_flutter_core: ^28.2.11
+  numberpicker: ^2.1.2
+  syncfusion_flutter_datepicker: ^28.2.12
+  lucide_icons: ^0.257.0
+  firebase_database: ^11.3.5
+  cloud_firestore: ^5.6.6
+  firebase_storage: ^12.4.6
+  image_picker: ^1.1.2
+  firebase_app_check: ^0.3.2+6
+  flutter_image_compress: ^2.4.0
+
+dependency_overrides:
+  dio: 5.4.3+1
+
+dev_dependencies:
+  rename: ^3.1.0
+  flutter_launcher_icons: ^0.14.3
+  # The following line 'flutter_lints' activates a set of recommended lints for Flutter apps,
+  # packages, and plugins designed to encourage good coding practices.
+#  flutter_lints: ^5.0.0
+  flutter_test:
+    sdk: flutter
+
+# APP ICON - public/app_icon/icon.png
+# Build icons: "dart run flutter_launcher_icons"
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "public/app_icon/icon.png"
+  remove_alpha_ios: true
+
+# RENAME YOUR PROJECT
+# flutter pub run rename setAppName --targets ios,android --value "YourAppName"
+
+flutter:
+
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+
+  # To add assets to your application, add an assets section, like this:
+  assets:
+    - public/fonts/
+    - public/images/
+    - public/images/bottom_navigator/
+    - public/images/dashboard/
+    - public/app_icon/
+    - lang/
+    - .env
