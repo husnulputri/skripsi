@@ -11,6 +11,7 @@ import '/resources/pages/not_found_page.dart';
 import 'package:nylo_framework/nylo_framework.dart';
 
 appRouter() => nyRoutes((router) {
+<<<<<<< HEAD
       router.add(NotFoundPage.path).unknownRoute();
       router.add(HomeScreenPage.path).initialRoute();
       router.add(LoginPage.path);
@@ -24,3 +25,19 @@ appRouter() => nyRoutes((router) {
       // router.add(nyRoutes(AdminDashboardPage.path, page: (context) => AdminDashboardPage()));
 
     });
+=======
+      router.add(HomePage.path).initialRoute();
+
+      // Add your routes here ...
+      // router.add(NewPage.path, transitionType: TransitionType.fade());
+
+      // Example using grouped routes
+      // router.group(() => {
+      //   "route_guards": [AuthRouteGuard()],
+      //   "prefix": "/dashboard"
+      // }, (router) {
+      //
+      // });
+      router.add(NotFoundPage.path).unknownRoute();
+});
+>>>>>>> c5fbf22a17fab3e36f98e6e04b7946a4ead43b86

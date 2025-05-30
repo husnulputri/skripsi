@@ -18,14 +18,14 @@ dependencies:
   url_launcher: ^6.2.6
   google_fonts: ^6.2.1
   analyzer: ^6.7.0
-  intl: ^0.19.0
-  nylo_framework: ^6.5.13
+  intl: ^0.20.2
+  nylo_framework: ^6.8.7
   pretty_dio_logger: ^1.4.0
   cupertino_icons: ^1.0.8
   path_provider: ^2.1.4
-  flutter_local_notifications: ^18.0.1
+  flutter_local_notifications: ^19.1.0
   font_awesome_flutter: ^10.8.0
-  scaffold_ui: ^1.2.2
+  scaffold_ui: ^1.2.7
   flutter:
     sdk: flutter
   flutter_localizations:
@@ -49,7 +49,7 @@ dependency_overrides:
   dio: 5.7.0
 
 dev_dependencies:
-  rename: ^3.0.2
+  rename: ^3.1.0
   flutter_launcher_icons: ^0.14.3
   # The following line 'flutter_lints' activates a set of recommended lints for Flutter apps,
   # packages, and plugins designed to encourage good coding practices.
